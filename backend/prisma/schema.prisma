@@ -1,0 +1,235 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int         @id @default(autoincrement())
+  email         String      @unique
+  name          String
+  password      String
+  role          Role        @default(USER)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  projects      Project[]
+  tasks         Task[]      @relation("AssignedTasks")
+  createdTasks  Task[]      @relation("CreatedTasks")
+  notes         Note[]
+  files         TaskFile[]
+  customers     Customer[]    @relation("CreatedCustomers")
+  sharedCustomers Customer[]  @relation("SharedCustomers")
+  interactions  Interaction[]
+  invoices      Invoice[]
+  payments      Payment[]
+}
+
+model Project {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  isPrivate   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  owner       User     @relation(fields: [ownerId], references: [id])
+  ownerId     Int
+  tasks       Task[]
+  customer    Customer?   @relation(fields: [customerId], references: [id])
+  customerId  Int?
+}
+
+model Task {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  status      Status    @default(NOT_STARTED)
+  priority    Priority  @default(NORMAL)
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  project     Project   @relation(fields: [projectId], references: [id])
+  projectId   Int
+  user        User      @relation("AssignedTasks", fields: [userId], references: [id])
+  userId      Int
+  creator     User      @relation("CreatedTasks", fields: [creatorId], references: [id])
+  creatorId   Int
+  subtasks    Subtask[]
+  notes       Note[]
+  files       TaskFile[]
+}
+
+model Subtask {
+  id          Int       @id @default(autoincrement())
+  title       String
+  completed   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  task        Task      @relation(fields: [taskId], references: [id])
+  taskId      Int
+}
+
+model Note {
+  id          Int       @id @default(autoincrement())
+  content     String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  task        Task      @relation(fields: [taskId], references: [id])
+  taskId      Int
+  user        User      @relation(fields: [userId], references: [id])
+  userId      Int
+}
+
+model TaskFile {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  taskId    Int
+  userId    Int
+  filename  String
+  filePath  String   // Supabase Storage'daki dosya yolu
+  mimeType  String
+  size      Int
+  publicUrl String?  // Supabase public URL
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([taskId])
+  @@index([userId])
+}
+
+model Customer {
+  id            Int           @id @default(autoincrement())
+  name          String
+  company       String?
+  email         String        @unique
+  phone         String?
+  role          String?
+  status        CustomerStatus @default(LEAD)
+  projects      Project[]
+  interactions  Interaction[]
+  invoices      Invoice[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  createdBy     User          @relation("CreatedCustomers", fields: [userId], references: [id])
+  userId        Int
+  sharedWith    User[]        @relation("SharedCustomers")
+}
+
+model Interaction {
+  id          Int               @id @default(autoincrement())
+  type        InteractionType
+  notes       String
+  customer    Customer          @relation(fields: [customerId], references: [id])
+  customerId  Int
+  createdBy   User             @relation(fields: [userId], references: [id])
+  userId      Int
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Invoice {
+  id              Int           @id @default(autoincrement())
+  number          String        @unique
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  customerId      Int
+  issueDate       DateTime      @default(now())
+  dueDate         DateTime
+  status          InvoiceStatus @default(DRAFT)
+  items           InvoiceItem[]
+  payments        Payment[]
+  totalAmount     Float
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  createdBy       User          @relation(fields: [userId], references: [id])
+  userId          Int
+}
+
+model InvoiceItem {
+  id          Int      @id @default(autoincrement())
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id])
+  invoiceId   Int
+  description String
+  quantity    Int
+  unitPrice   Float
+  totalPrice  Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Payment {
+  id          Int           @id @default(autoincrement())
+  invoice     Invoice       @relation(fields: [invoiceId], references: [id])
+  invoiceId   Int
+  amount      Float
+  paymentDate DateTime      @default(now())
+  method      PaymentMethod
+  reference   String?
+  notes       String?
+  status      PaymentStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  createdBy   User          @relation(fields: [userId], references: [id])
+  userId      Int
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum Status {
+  NOT_STARTED
+  IN_PROGRESS
+  STUCK
+  COMPLETED
+}
+
+enum Priority {
+  CRITICAL
+  HIGH
+  NORMAL
+  LOW
+}
+
+enum CustomerStatus {
+  LEAD
+  CONTACT
+  OPPORTUNITY
+  CUSTOMER
+  INACTIVE
+}
+
+enum InteractionType {
+  EMAIL
+  PHONE
+  MEETING
+  NOTE
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  PARTIALLY_PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  CREDIT_CARD
+  CASH
+  CHECK
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+} 
