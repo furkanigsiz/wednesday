@@ -11,14 +11,15 @@ datasource db {
 model User {
   id            Int         @id @default(autoincrement())
   email         String      @unique
-  name          String
+  name          String?
   password      String
   role          Role        @default(USER)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
-  projects      Project[]
-  tasks         Task[]      @relation("AssignedTasks")
+  projects      Project[]   @relation("ProjectMembers")
+  ownedProjects Project[]   @relation("ProjectOwner")
   createdTasks  Task[]      @relation("CreatedTasks")
+  assignedTasks Task[]      @relation("AssignedTasks")
   notes         Note[]
   files         TaskFile[]
   customers     Customer[]    @relation("CreatedCustomers")
@@ -35,8 +36,9 @@ model Project {
   isPrivate   Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  owner       User     @relation(fields: [ownerId], references: [id])
+  owner       User     @relation("ProjectOwner", fields: [ownerId], references: [id])
   ownerId     Int
+  members     User[]   @relation("ProjectMembers")
   tasks       Task[]
   customer    Customer?   @relation(fields: [customerId], references: [id])
   customerId  Int?
@@ -51,10 +53,9 @@ model Task {
   dueDate     DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project     Project   @relation(fields: [projectId], references: [id])
   projectId   Int
-  user        User      @relation("AssignedTasks", fields: [userId], references: [id])
-  userId      Int
+  assignedUsers User[]  @relation("AssignedTasks")
   creator     User      @relation("CreatedTasks", fields: [creatorId], references: [id])
   creatorId   Int
   subtasks    Subtask[]

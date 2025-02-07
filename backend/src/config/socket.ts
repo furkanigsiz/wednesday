@@ -21,7 +21,7 @@ class SocketService {
       
       this.io = new Server(httpServer, {
         cors: {
-          origin: process.env.FRONTEND_URL || 'http://localhost:3001',
+          origin: [process.env.FRONTEND_URL || 'http://localhost:3001', 'https://wednasday.netlify.app'],
           methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
           credentials: true,
           allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
