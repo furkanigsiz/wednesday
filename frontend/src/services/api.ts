@@ -14,7 +14,7 @@ import {
   // DashboardSummary ve Subtask'ı kaldırıyoruz çünkü kullanılmıyor
 } from '../types';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -23,7 +23,8 @@ export const api = axios.create({
     'Accept': 'application/json'
   },
   withCredentials: true,
-  timeout: 10000
+  timeout: 30000,
+  timeoutErrorMessage: 'Sunucu yanıt vermedi. Lütfen internet bağlantınızı kontrol edin veya daha sonra tekrar deneyin.'
 });
 
 // Request interceptor - token ekleme

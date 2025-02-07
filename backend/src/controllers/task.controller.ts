@@ -115,56 +115,48 @@ const notifyTaskStatusChange = async ({
 
 export const createTask = async (req: Request, res: Response) => {
   try {
-    const { title, description, status, priority, dueDate, projectId, assignedUserIds } = req.body;
-    const creatorId = req.user?.userId;
+    const { title, description, status, priority, projectId, dueDate, userId }: CreateTaskDTO = req.body;
+    const currentUserId = req.user?.userId;
 
-    if (!creatorId) {
+    if (!currentUserId) {
       return res.status(401).json({ error: 'Yetkilendirme gerekli' });
     }
 
+    // Projenin varlığını ve erişim yetkisini kontrol et
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) {
+      return res.status(404).json({ error: 'Proje bulunamadı' });
+    }
+
+    if (project.isPrivate && project.ownerId !== currentUserId) {
+      return res.status(403).json({ error: 'Bu projeye görev ekleme yetkiniz yok' });
+    }
+
+    // Görevi oluştur
     const task = await prisma.task.create({
       data: {
         title,
         description,
         status,
-        priority,
-        dueDate: dueDate ? new Date(dueDate) : undefined,
-        project: {
-          connect: { id: projectId }
-        },
-        creator: {
-          connect: { id: creatorId }
-        },
-        assignedUsers: {
-          connect: assignedUserIds.map((id: number) => ({ id }))
-        }
+        priority: mapPriority(priority),
+        dueDate: dueDate ? new Date(dueDate) : null,
+        project: { connect: { id: projectId } },
+        user: { connect: { id: userId || currentUserId } },
+        creator: { connect: { id: currentUserId } },
       },
-      include: {
-        project: true,
-        assignedUsers: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
-        creator: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        }
-      }
+      include: taskInclude,
     });
 
-    // Her atanan kullanıcıya bildirim gönder
-    for (const user of task.assignedUsers) {
-      socketService.emitToUser(user.id, notificationEvents.TASK_ASSIGNED, {
+    // Görev atanan kullanıcıya bildirim gönder
+    if (userId && userId !== currentUserId) {
+      socketService.emitToUser(userId, notificationEvents.TASK_ASSIGNED, {
         taskId: task.id,
         title: task.title,
-        assignedBy: task.creator.name,
-        projectName: task.project.name
+        assignedBy: task.creator?.name,
+        projectName: task.project?.name
       });
     }
 
@@ -312,19 +304,31 @@ export const getTaskById = async (req: Request, res: Response) => {
 
 export const updateTask = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const { title, description, status, priority, dueDate, assignedUserIds } = req.body;
-    const userId = req.user?.userId;
+    const taskId = parseInt(req.params.id);
+    const updates: UpdateTaskDTO = req.body;
+    const currentUserId = req.user?.userId;
 
-    if (!userId) {
+    if (!currentUserId) {
       return res.status(401).json({ error: 'Yetkilendirme gerekli' });
     }
 
+    console.log('Görev güncelleme başladı:', {
+      taskId,
+      updates,
+      currentUserId
+    });
+
+    // Priority değerini dönüştür
+    if (updates.priority) {
+      updates.priority = mapPriority(updates.priority);
+    }
+
     const existingTask = await prisma.task.findUnique({
-      where: { id: Number(id) },
+      where: { id: taskId },
       include: {
         project: true,
-        assignedUsers: true
+        user: true,
+        creator: true
       }
     });
 
@@ -332,52 +336,114 @@ export const updateTask = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Görev bulunamadı' });
     }
 
-    const task = await prisma.task.update({
-      where: { id: Number(id) },
-      data: {
-        title,
-        description,
-        status,
-        priority,
-        dueDate: dueDate ? new Date(dueDate) : undefined,
-        assignedUsers: {
-          set: assignedUserIds.map((id: number) => ({ id }))
-        }
-      },
-      include: {
-        project: true,
-        assignedUsers: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
-        creator: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        }
-      }
+    console.log('Mevcut görev bilgileri:', {
+      taskId,
+      assignedUserId: existingTask.userId,
+      projectOwnerId: existingTask.project?.ownerId,
+      currentUserId
     });
 
-    // Yeni atanan kullanıcılara bildirim gönder
-    const newUserIds = assignedUserIds.filter(
-      (id: number) => !existingTask.assignedUsers.some(user => user.id === id)
-    );
+    const task = await prisma.task.update({
+      where: { id: taskId },
+      data: updates,
+      include: taskInclude,
+    });
 
-    for (const userId of newUserIds) {
-      const user = task.assignedUsers.find(u => u.id === userId);
-      if (user) {
-        socketService.emitToUser(userId, notificationEvents.TASK_ASSIGNED, {
+    // Görev güncellendiğinde bildirim gönder
+    if (task.userId && task.userId !== currentUserId) {
+      console.log('Görev sahibine bildirim gönderiliyor:', {
+        userId: task.userId,
+        currentUserId,
+        taskTitle: task.title,
+        updatedBy: task.creator?.name
+      });
+
+      try {
+        // Durum değişikliği bildirimi
+        if (updates.status && updates.status !== existingTask.status) {
+          socketService.emitToUser(task.userId, notificationEvents.TASK_UPDATED, {
+            taskId: task.id,
+            title: task.title,
+            updatedBy: task.creator?.name,
+            message: `Görev durumu "${TaskStatusLabels[existingTask.status]}" durumundan "${TaskStatusLabels[updates.status]}" durumuna güncellendi`,
+            status: updates.status,
+            oldStatus: existingTask.status
+          });
+        }
+
+        // Öncelik değişikliği bildirimi
+        if (updates.priority && updates.priority !== existingTask.priority) {
+          socketService.emitToUser(task.userId, notificationEvents.TASK_UPDATED, {
+            taskId: task.id,
+            title: task.title,
+            updatedBy: task.creator?.name,
+            message: `Görev önceliği "${TaskPriorityLabels[existingTask.priority]}" önceliğinden "${TaskPriorityLabels[updates.priority]}" önceliğine güncellendi`,
+            priority: updates.priority,
+            oldPriority: existingTask.priority
+          });
+        }
+
+        // Bitiş tarihi değişikliği bildirimi
+        if (updates.dueDate && (!existingTask.dueDate || 
+            new Date(updates.dueDate).getTime() !== new Date(existingTask.dueDate).getTime())) {
+          socketService.emitToUser(task.userId, notificationEvents.TASK_UPDATED, {
+            taskId: task.id,
+            title: task.title,
+            updatedBy: task.creator?.name,
+            message: `Görevin bitiş tarihi güncellendi: ${new Date(updates.dueDate).toLocaleDateString('tr-TR')}`,
+            dueDate: updates.dueDate
+          });
+        }
+
+      } catch (error) {
+        console.error('Görev sahibine bildirim gönderme hatası:', error);
+      }
+    }
+
+    // Görev tamamlandıysa proje sahibine bildirim gönder
+    if (updates.status === 'COMPLETED' && task.project?.ownerId && task.project.ownerId !== currentUserId) {
+      console.log('Proje sahibine tamamlanma bildirimi gönderiliyor:', {
+        projectOwnerId: task.project.ownerId,
+        currentUserId,
+        taskTitle: task.title,
+        completedBy: task.user?.name
+      });
+
+      try {
+        socketService.emitToUser(task.project.ownerId, notificationEvents.TASK_COMPLETED, {
           taskId: task.id,
           title: task.title,
-          assignedBy: task.creator.name,
+          completedBy: task.user?.name,
           projectName: task.project.name
         });
+      } catch (error) {
+        console.error('Proje sahibine bildirim gönderme hatası:', error);
       }
+    }
+
+    // Görev durumu değiştiyse ve proje sahibi farklıysa bildirim gönder
+    if (updates.status && 
+        updates.status !== existingTask.status && 
+        task.project?.ownerId && 
+        task.project.ownerId !== currentUserId) {
+      
+      await notifyTaskStatusChange({
+        projectOwnerId: task.project.ownerId,
+        currentUserId,
+        taskTitle: task.title,
+        oldStatus: existingTask.status,
+        newStatus: updates.status
+      });
+
+      socketService.emitToUser(task.project.ownerId, notificationEvents.TASK_UPDATED, {
+        taskId: task.id,
+        title: task.title,
+        updatedBy: task.user?.name,
+        message: `Görev durumu "${TaskStatusLabels[existingTask.status]}" durumundan "${TaskStatusLabels[updates.status]}" durumuna güncellendi`,
+        status: updates.status,
+        oldStatus: existingTask.status,
+        priority: task.priority
+      });
     }
 
     res.json(task);
