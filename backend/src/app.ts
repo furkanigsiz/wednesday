@@ -16,7 +16,7 @@ const app: Application = express();
 
 // CORS yapılandırması
 app.use(cors({
-  origin: ['https://wednasday.netlify.app', 'http://localhost:3000', 'http://localhost:3001'],
+  origin: [process.env.FRONTEND_URL || 'http://localhost:3001', 'https://wednasday.netlify.app'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
@@ -31,11 +31,26 @@ app.use(express.urlencoded({ extended: true }));
 
 // Request logging middleware
 app.use((req: Request, res: Response, next: NextFunction) => {
+  const startTime = Date.now();
+  
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
     body: req.body,
     query: req.query,
-    headers: req.headers
+    headers: req.headers,
+    ip: req.ip,
+    userAgent: req.get('user-agent')
   });
+
+  // Response bittiğinde loglama
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} completed`, {
+      statusCode: res.statusCode,
+      duration: `${duration}ms`,
+      ip: req.ip
+    });
+  });
+
   next();
 });
 

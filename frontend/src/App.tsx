@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -21,6 +21,7 @@ import EditCustomerPage from './pages/CRM/EditCustomerPage';
 import CustomerDetailPage from './pages/CRM/CustomerDetailPage';
 import TaskDetailPage from './pages/Tasks/TaskDetailPage';
 import { ThemeProvider as MuiThemeProvider } from './context/ThemeContext';
+import axios from 'axios';
 
 // Protected Route bileşeni
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -35,6 +36,19 @@ const PublicRoute: React.FC<{ children: React.ReactElement }> = ({ children }) =
 };
 
 const App: React.FC = () => {
+  useEffect(() => {
+    // Her 10 dakikada bir health check yap
+    const healthCheck = () => {
+      axios.get(`${process.env.REACT_APP_API_URL}/health`)
+        .catch(error => console.log('Health check error:', error));
+    };
+
+    const interval = setInterval(healthCheck, 10 * 60 * 1000); // 10 dakika
+    healthCheck(); // İlk kontrol
+
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={tr}>
       <ThemeProvider theme={theme}>
