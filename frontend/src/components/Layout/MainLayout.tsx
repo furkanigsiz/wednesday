@@ -21,13 +21,15 @@ import AssignmentIcon from '@mui/icons-material/Assignment';
 import LogoutIcon from '@mui/icons-material/Logout';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Avatar, Tooltip, Menu, MenuItem } from '@mui/material';
+import { Avatar, Tooltip, Menu, MenuItem, Button } from '@mui/material';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import Badge from '@mui/material/Badge';
-import { useTheme } from '@mui/material/styles';
+import { useTheme as useMuiTheme } from '@mui/material/styles';
 import PeopleIcon from '@mui/icons-material/People';
+import { useTheme as useCustomTheme } from '../../context/ThemeContext';
+import { Brightness4 as DarkIcon, Brightness7 as LightIcon } from '@mui/icons-material';
 
 const drawerWidth = 280;
 
@@ -116,23 +118,25 @@ const menuItems = [
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = React.useState(true);
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [profileAnchorEl, setProfileAnchorEl] = useState<null | HTMLElement>(null);
+  const [notificationAnchorEl, setNotificationAnchorEl] = useState<null | HTMLElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
-  const theme = useTheme();
-  const { notifications, markAsRead, clearAll, unreadCount } = useNotifications();
+  const muiTheme = useMuiTheme();
+  const { darkMode, toggleDarkMode } = useCustomTheme();
+  const { notifications, markAsRead, markAllAsRead, unreadCount } = useNotifications();
 
   const handleDrawerToggle = () => {
     setOpen(!open);
   };
 
   const handleProfileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
+    setProfileAnchorEl(event.currentTarget);
   };
 
   const handleProfileMenuClose = () => {
-    setAnchorEl(null);
+    setProfileAnchorEl(null);
   };
 
   const handleLogout = () => {
@@ -142,17 +146,19 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   };
 
   const handleNotificationClick = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
+    setNotificationAnchorEl(event.currentTarget);
   };
 
   const handleNotificationClose = () => {
-    setAnchorEl(null);
+    setNotificationAnchorEl(null);
   };
 
   const handleNotificationItemClick = (notification: any) => {
     markAsRead(notification.id);
-    if (notification.data.taskId) {
-      navigate(`/tasks/${notification.data.taskId}`);
+    if (notification.data?.taskId) {
+      navigate(`/tasks/${notification.data.taskId}/details`);
+    } else if (notification.data?.projectId) {
+      navigate(`/projects/${notification.data.projectId}`);
     }
     handleNotificationClose();
   };
@@ -178,10 +184,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
               <NotificationsIcon />
             </Badge>
           </IconButton>
+          <IconButton color="inherit" onClick={toggleDarkMode} sx={{ ml: 1 }}>
+            {darkMode ? <LightIcon /> : <DarkIcon />}
+          </IconButton>
           <Tooltip title="Profil">
             <IconButton 
               onClick={handleProfileMenuOpen}
-              sx={{ p: 0 }}
+              sx={{ ml: 1 }}
             >
               <Avatar sx={{ bgcolor: 'primary.main' }}>
                 {user?.name?.charAt(0).toUpperCase() || 'U'}
@@ -189,8 +198,72 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             </IconButton>
           </Tooltip>
           <Menu
-            anchorEl={anchorEl}
-            open={Boolean(anchorEl)}
+            anchorEl={notificationAnchorEl}
+            open={Boolean(notificationAnchorEl)}
+            onClose={handleNotificationClose}
+            onClick={handleNotificationClose}
+            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+            PaperProps={{
+              elevation: 2,
+              sx: {
+                mt: 1.5,
+                minWidth: 360,
+                maxHeight: 400,
+                overflow: 'auto',
+                borderRadius: 2,
+              },
+            }}
+          >
+            <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="h6">Bildirimler</Typography>
+              {unreadCount > 0 && (
+                <Button size="small" onClick={markAllAsRead}>
+                  Tümünü Okundu İşaretle
+                </Button>
+              )}
+            </Box>
+            <Divider />
+            {notifications.length === 0 ? (
+              <MenuItem disabled>
+                <Typography variant="body2" color="text.secondary">
+                  Bildirim bulunmuyor
+                </Typography>
+              </MenuItem>
+            ) : (
+              notifications.map((notification) => (
+                <MenuItem
+                  key={notification.id}
+                  onClick={() => handleNotificationItemClick(notification)}
+                  sx={{
+                    backgroundColor: notification.read ? 'inherit' : muiTheme.palette.action.hover,
+                    '&:hover': {
+                      backgroundColor: muiTheme.palette.action.selected,
+                    },
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, py: 1 }}>
+                    <Box sx={{ pt: 0.5 }}>
+                      {notification.type === 'TASK_ASSIGNED' && <AssignmentIcon color="primary" />}
+                      {notification.type === 'TASK_UPDATED' && <AssignmentIcon color="info" />}
+                      {notification.type === 'TASK_COMPLETED' && <AssignmentIcon color="success" />}
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="subtitle2">
+                        {notification.title}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {notification.message}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </MenuItem>
+              ))
+            )}
+          </Menu>
+          <Menu
+            anchorEl={profileAnchorEl}
+            open={Boolean(profileAnchorEl)}
             onClose={handleProfileMenuClose}
             onClick={handleProfileMenuClose}
             transformOrigin={{ horizontal: 'right', vertical: 'top' }}
