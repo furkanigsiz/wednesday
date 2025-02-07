@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -50,7 +51,7 @@ model Task {
   dueDate     DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  project     Project   @relation(fields: [projectId], references: [id])
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   projectId   Int
   user        User      @relation("AssignedTasks", fields: [userId], references: [id])
   userId      Int
@@ -67,7 +68,7 @@ model Subtask {
   completed   Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  task        Task      @relation(fields: [taskId], references: [id])
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
   taskId      Int
 }
 
@@ -76,7 +77,7 @@ model Note {
   content     String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  task        Task      @relation(fields: [taskId], references: [id])
+  task        Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
   taskId      Int
   user        User      @relation(fields: [userId], references: [id])
   userId      Int

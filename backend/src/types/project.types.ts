@@ -2,6 +2,7 @@ export interface CreateProjectDTO {
   name: string;
   description?: string;
   isPrivate: boolean;
+  customerId?: number;
 }
 
 export interface UpdateProjectDTO {

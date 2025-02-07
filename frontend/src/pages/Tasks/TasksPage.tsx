@@ -40,6 +40,8 @@ import {
   Fade,
   styled,
   Stack,
+  ListItemIcon,
+  Divider,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -53,6 +55,11 @@ import {
   Close as CloseIcon,
   FilterList as FilterListIcon,
   Clear as ClearIcon,
+  Assignment as TaskIcon,
+  Folder as ProjectIcon,
+  CheckCircle as CompletedIcon,
+  Schedule as PendingIcon,
+  Warning as StuckIcon,
 } from '@mui/icons-material';
 import { taskService, projectService, subtaskService, userService, noteService, fileService } from '../../services/api';
 import { Task, TaskStatus, TaskPriority, Project, Subtask, User, Note, TaskFile } from '../../types';
@@ -64,6 +71,7 @@ import CalendarIcon from '@mui/icons-material/CalendarToday';
 import SubtaskList from '../../components/Task/SubtaskList';
 import NoteList from '../../components/Task/NoteList';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { useNavigate } from 'react-router-dom';
 
 const TaskStatusLabels: Record<TaskStatus, string> = {
   NOT_STARTED: 'Başlanmadı',
@@ -466,6 +474,9 @@ const TasksPage: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
   const [isFilterExpanded, setIsFilterExpanded] = useState(false);
+  const navigate = useNavigate();
+  const [expandedProjects, setExpandedProjects] = useState<number[]>([]);
+  const [projectTasks, setProjectTasks] = useState<Record<number, Task[]>>({});
 
   useEffect(() => {
     fetchTasks();
@@ -707,6 +718,50 @@ const TasksPage: React.FC = () => {
     );
   };
 
+  const handleProjectClick = async (projectId: number) => {
+    if (expandedProjects.includes(projectId)) {
+      setExpandedProjects(expandedProjects.filter(id => id !== projectId));
+    } else {
+      setExpandedProjects([...expandedProjects, projectId]);
+      
+      // Eğer bu projenin görevleri henüz yüklenmemişse, yükle
+      if (!projectTasks[projectId]) {
+        try {
+          const response = await taskService.getProjectTasks(projectId);
+          setProjectTasks(prev => ({
+            ...prev,
+            [projectId]: response.tasks
+          }));
+        } catch (error) {
+          console.error('Görevler yüklenemedi:', error);
+        }
+      }
+    }
+  };
+
+  const getTaskStatusIcon = (status: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        return <CompletedIcon color="success" />;
+      case 'IN_PROGRESS':
+        return <PendingIcon color="primary" />;
+      case 'STUCK':
+        return <StuckIcon color="error" />;
+      default:
+        return <TaskIcon color="action" />;
+    }
+  };
+
+  const getTaskStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      'NOT_STARTED': 'Başlanmadı',
+      'IN_PROGRESS': 'Devam Ediyor',
+      'STUCK': 'Takıldı',
+      'COMPLETED': 'Tamamlandı'
+    };
+    return labels[status] || status;
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
@@ -816,64 +871,82 @@ const TasksPage: React.FC = () => {
           <Alert severity="info">Görev bulunamadı</Alert>
         ) : (
           <Box>
-            {tasks.map((task) => (
-              <TaskCard key={task.id}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <Box sx={{ flex: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                        <Typography variant="h6" component="div" sx={{ mr: 2 }}>
-                          {task.title}
-                        </Typography>
-                        <Chip
-                          label={TaskStatusLabels[task.status]}
-                          size="small"
-                          color={task.status === 'COMPLETED' ? 'success' : task.status === 'STUCK' ? 'error' : 'primary'}
-                          sx={{ mr: 1 }}
-                        />
-                        <Chip
-                          label={TaskPriorityLabels[task.priority]}
-                          size="small"
-                          color={task.priority === 'CRITICAL' ? 'error' : task.priority === 'HIGH' ? 'warning' : 'default'}
-                        />
-                      </Box>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                        {task.description}
+            {projects.map((project) => (
+              <React.Fragment key={project.id}>
+                <ListItem
+                  button
+                  onClick={() => handleProjectClick(project.id)}
+                  sx={{ bgcolor: 'background.default' }}
+                >
+                  <ListItemIcon>
+                    <ProjectIcon color="primary" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={
+                      <Typography variant="h6">
+                        {project.name}
+                        {project.customer && (
+                          <Chip
+                            label={project.customer.name}
+                            size="small"
+                            sx={{ ml: 1 }}
+                          />
+                        )}
                       </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <IconButton size="small" onClick={() => handleOpenDialog(task)}>
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton size="small" onClick={() => handleDeleteTask(task.id)}>
-                        <DeleteIcon />
-                      </IconButton>
-                      <IconButton size="small" onClick={() => handleExpandTask(task.id)}>
-                        {expandedTaskId === task.id ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                      </IconButton>
-                    </Box>
-                  </Box>
-
-                  <Collapse in={expandedTaskId === task.id}>
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="subtitle2" gutterBottom>Alt Görevler</Typography>
-                      <SubtaskList 
-                        task={task} 
-                        onSubtaskUpdate={() => handleTaskUpdate(task)} 
-                      />
-
-                      <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>Notlar</Typography>
-                      <NoteList 
-                        task={task} 
-                        onNoteUpdate={() => handleTaskUpdate(task)} 
-                      />
-
-                      <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>Dosyalar</Typography>
-                      <FileList task={task} />
-                    </Box>
-                  </Collapse>
-                </CardContent>
-              </TaskCard>
+                    }
+                    secondary={project.description}
+                  />
+                  <IconButton>
+                    {expandedProjects.includes(project.id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  </IconButton>
+                </ListItem>
+                <Collapse in={expandedProjects.includes(project.id)} timeout="auto" unmountOnExit>
+                  <List component="div" disablePadding>
+                    {projectTasks[project.id]?.map((task) => (
+                      <ListItem
+                        key={task.id}
+                        sx={{ pl: 4 }}
+                        button
+                        onClick={() => navigate(`/tasks/${task.id}/details`)}
+                      >
+                        <ListItemIcon>
+                          {getTaskStatusIcon(task.status)}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={task.title}
+                          secondary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Chip
+                                label={getTaskStatusLabel(task.status)}
+                                size="small"
+                                color={
+                                  task.status === 'COMPLETED' ? 'success' :
+                                  task.status === 'IN_PROGRESS' ? 'primary' :
+                                  task.status === 'STUCK' ? 'error' :
+                                  'default'
+                                }
+                              />
+                              {task.dueDate && (
+                                <Typography variant="caption">
+                                  Bitiş: {new Date(task.dueDate).toLocaleDateString('tr-TR')}
+                                </Typography>
+                              )}
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                    ))}
+                    {(!projectTasks[project.id] || projectTasks[project.id].length === 0) && (
+                      <ListItem sx={{ pl: 4 }}>
+                        <ListItemText
+                          secondary="Bu projede henüz görev bulunmuyor"
+                        />
+                      </ListItem>
+                    )}
+                  </List>
+                </Collapse>
+                <Divider />
+              </React.Fragment>
             ))}
           </Box>
         )}

@@ -39,6 +39,7 @@ import {
   TableCell,
   Menu,
   MenuItem as MuiMenuItem,
+  ListItemIcon,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -63,14 +64,34 @@ import {
   ExpandLess as ExpandLessIcon,
   Receipt as ReceiptIcon,
   AccountBalance as AccountBalanceIcon,
+  FolderOpen as ProjectIcon,
+  Assignment as TaskIcon,
+  CheckCircle as CompletedIcon,
+  Schedule as PendingIcon,
+  Warning as StuckIcon,
+  PriorityHigh,
+  Error,
+  LowPriority,
+  LinearScale,
+  Schedule,
+  Person,
+  ArrowForward,
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { customerService, userService, interactionService } from '../../services/api';
 import { api } from '../../services/api';
-import { Customer, CustomerStatus, User, Interaction, InteractionType } from '../../types';
+import { Customer, CustomerStatus, User, Interaction, InteractionType, Project, Task } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import InvoiceForm from '../../components/forms/InvoiceForm';
 import PaymentForm from '../../components/forms/PaymentForm';
+import {
+  Timeline,
+  TimelineItem,
+  TimelineSeparator,
+  TimelineConnector,
+  TimelineContent,
+  TimelineDot,
+} from '@mui/lab';
 
 type SortOrder = 'asc' | 'desc';
 type SortField = 'createdAt' | 'type';
@@ -163,6 +184,9 @@ const CustomerDetailPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [statusMenuAnchor, setStatusMenuAnchor] = useState<null | HTMLElement>(null);
   const [selectedInvoiceForStatus, setSelectedInvoiceForStatus] = useState<Invoice | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [projectTasks, setProjectTasks] = useState<Task[]>([]);
 
   const handleSort = (field: SortField) => {
     setSortConfig(prev => ({
@@ -279,11 +303,47 @@ const CustomerDetailPage: React.FC = () => {
       }
     };
 
+    const fetchProjects = async () => {
+      try {
+        if (!id) return;
+        const response = await api.get(`/api/crm/customers/${id}/projects`);
+        setProjects(response.data);
+      } catch (error) {
+        console.error('Projeler yüklenemedi:', error);
+        enqueueSnackbar('Projeler yüklenirken bir hata oluştu', { variant: 'error' });
+      }
+    };
+
     fetchCustomer();
     fetchUsers();
     fetchInteractions();
     fetchInvoices();
+    fetchProjects();
   }, [id, navigate, enqueueSnackbar, currentUser?.id, customer?.sharedWith]);
+
+  useEffect(() => {
+    const fetchProjectTasks = async () => {
+      try {
+        if (!selectedProject?.id) return;
+        const response = await api.get(`/api/tasks`, {
+          params: {
+            projectId: selectedProject.id
+          }
+        });
+        setProjectTasks(response.data.tasks || []);
+      } catch (error) {
+        console.error('Görevler yüklenemedi:', error);
+        enqueueSnackbar('Görevler yüklenirken bir hata oluştu', { variant: 'error' });
+        setProjectTasks([]);
+      }
+    };
+
+    if (selectedProject) {
+      fetchProjectTasks();
+    } else {
+      setProjectTasks([]);
+    }
+  }, [selectedProject, enqueueSnackbar]);
 
   const handleShare = async (targetUserId: number) => {
     try {
@@ -527,6 +587,29 @@ const CustomerDetailPage: React.FC = () => {
     }
   };
 
+  const getTaskStatusIcon = (status: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        return <CompletedIcon color="success" />;
+      case 'IN_PROGRESS':
+        return <PendingIcon color="primary" />;
+      case 'STUCK':
+        return <StuckIcon color="error" />;
+      default:
+        return <TaskIcon color="action" />;
+    }
+  };
+
+  const getTaskStatusLabel = (status: string) => {
+    const labels: Record<string, string> = {
+      'NOT_STARTED': 'Başlanmadı',
+      'IN_PROGRESS': 'Devam Ediyor',
+      'STUCK': 'Takıldı',
+      'COMPLETED': 'Tamamlandı'
+    };
+    return labels[status] || status;
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
@@ -585,10 +668,11 @@ const CustomerDetailPage: React.FC = () => {
       </Box>
 
       <Tabs value={activeTab} onChange={handleTabChange}>
-        <Tab label="Genel" />
-        <Tab label="İstatistikler" />
-        <Tab label="Etkileşimler" />
-        <Tab label="Finansal" />
+        <Tab label="Müşteri Bilgileri" />
+        <Tab label="Müşteri İstatistikleri" />
+        <Tab label="Müşteri Etkileşimleri" />
+        <Tab label="Finansal Bilgiler" />
+        <Tab label="Müşteri Projeleri" />
       </Tabs>
 
       {activeTab === 0 && (
@@ -597,7 +681,7 @@ const CustomerDetailPage: React.FC = () => {
             <Paper sx={{ p: 3, mb: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h5" sx={{ flexGrow: 1 }}>
-                  {customer.name}
+                  Müşteri Detay Bilgileri
                 </Typography>
                 <Chip
                   label={getStatusLabel(customer.status)}
@@ -665,7 +749,7 @@ const CustomerDetailPage: React.FC = () => {
                 }
                 title={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="h6">Etkileşim İstatistikleri</Typography>
+                    <Typography variant="h6">Müşteri İletişim İstatistikleri</Typography>
                     <IconButton
                       onClick={() => setStatsExpanded(!statsExpanded)}
                       aria-expanded={statsExpanded}
@@ -741,7 +825,7 @@ const CustomerDetailPage: React.FC = () => {
               <CardHeader
                 title={
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="h6">Etkileşimler</Typography>
+                    <Typography variant="h6">Müşteri İletişim Geçmişi</Typography>
                     <Box sx={{ display: 'flex', gap: 0.5 }}>
                       <Tooltip title="Tarihe göre sırala">
                         <IconButton
@@ -903,7 +987,7 @@ const CustomerDetailPage: React.FC = () => {
           <Grid item xs={12} md={4}>
             <Paper sx={{ p: 3, mb: 3 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6">Paylaşılan Kullanıcılar</Typography>
+                <Typography variant="h6">Müşteri Bilgilerini Görüntüleyebilen Kullanıcılar</Typography>
                 {canManageSharing && (
                   <IconButton 
                     size="small" 
@@ -1171,6 +1255,169 @@ const CustomerDetailPage: React.FC = () => {
                   <Typography color="text.secondary" align="center">
                     Lütfen ödeme yapmak için bir fatura seçin
                   </Typography>
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
+        </Box>
+      )}
+
+      {activeTab === 4 && (
+        <Box sx={{ mt: 2 }}>
+          <Grid container spacing={3}>
+            {/* Projeler Listesi */}
+            <Grid item xs={12} md={4}>
+              <Paper sx={{ p: 2 }}>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">
+                    Projeler
+                  </Typography>
+                </Box>
+                <List>
+                  {projects.map((project) => (
+                    <ListItem
+                      key={project.id}
+                      button
+                      selected={selectedProject?.id === project.id}
+                      onClick={() => setSelectedProject(project)}
+                    >
+                      <ListItemIcon>
+                        <ProjectIcon color={selectedProject?.id === project.id ? "primary" : "action"} />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={project.name}
+                        secondary={`${project.tasks?.length || 0} görev`}
+                      />
+                    </ListItem>
+                  ))}
+                  {projects.length === 0 && (
+                    <Typography color="text.secondary" align="center" sx={{ py: 2 }}>
+                      Henüz proje bulunmuyor
+                    </Typography>
+                  )}
+                </List>
+              </Paper>
+            </Grid>
+
+            {/* Seçili Projenin Görevleri */}
+            <Grid item xs={12} md={8}>
+              <Paper sx={{ p: 2 }}>
+                <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6">
+                    {selectedProject ? `${selectedProject.name} - Görevler` : 'Görevler'}
+                  </Typography>
+                </Box>
+                {selectedProject ? (
+                  <Grid container spacing={2}>
+                    {projectTasks.length > 0 ? (
+                      projectTasks.map((task) => (
+                        <Grid item xs={12} key={task.id}>
+                          <Card 
+                            sx={{ 
+                              borderLeft: 6,
+                              borderColor: task.status === 'COMPLETED' ? 'success.main' :
+                                         task.status === 'IN_PROGRESS' ? 'primary.main' :
+                                         task.status === 'STUCK' ? 'error.main' :
+                                         'warning.main'
+                            }}
+                          >
+                            <CardContent>
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                                <Typography variant="h6" component="div" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  {getTaskStatusIcon(task.status)}
+                                  {task.title}
+                                </Typography>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Chip
+                                    label={getTaskStatusLabel(task.status)}
+                                    color={
+                                      task.status === 'COMPLETED' ? 'success' :
+                                      task.status === 'IN_PROGRESS' ? 'primary' :
+                                      task.status === 'STUCK' ? 'error' :
+                                      'warning'
+                                    }
+                                    size="small"
+                                  />
+                                  <Tooltip title="Göreve Git">
+                                    <IconButton 
+                                      size="small"
+                                      onClick={() => navigate(`/tasks/${task.id}/details`)}
+                                      sx={{ ml: 1 }}
+                                    >
+                                      <ArrowForward />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Box>
+                              </Box>
+                              
+                              {task.description && (
+                                <Typography color="text.secondary" sx={{ mb: 2 }}>
+                                  {task.description}
+                                </Typography>
+                              )}
+                              
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+                                {task.dueDate && (
+                                  <Chip
+                                    icon={<Schedule />}
+                                    label={`Bitiş: ${new Date(task.dueDate).toLocaleDateString('tr-TR')}`}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                )}
+                                
+                                {task.user && (
+                                  <Chip
+                                    icon={<Person />}
+                                    label={`Atanan: ${task.user.name}`}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                )}
+
+                                {task.priority && (
+                                  <Chip
+                                    icon={task.priority === 'HIGH' ? <PriorityHigh /> : 
+                                         task.priority === 'CRITICAL' ? <Error /> :
+                                         task.priority === 'LOW' ? <LowPriority /> :
+                                         <LinearScale />}
+                                    label={`Öncelik: ${
+                                      task.priority === 'HIGH' ? 'Yüksek' :
+                                      task.priority === 'CRITICAL' ? 'Kritik' :
+                                      task.priority === 'LOW' ? 'Düşük' :
+                                      'Normal'
+                                    }`}
+                                    size="small"
+                                    variant="outlined"
+                                    color={
+                                      task.priority === 'HIGH' ? 'warning' :
+                                      task.priority === 'CRITICAL' ? 'error' :
+                                      task.priority === 'LOW' ? 'info' :
+                                      'default'
+                                    }
+                                  />
+                                )}
+                              </Box>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                      ))
+                    ) : (
+                      <Grid item xs={12}>
+                        <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'background.default' }}>
+                          <Typography color="text.secondary" variant="h6">
+                            Bu projede henüz görev bulunmuyor
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                    )}
+                  </Grid>
+                ) : (
+                  <Paper sx={{ p: 3, textAlign: 'center', bgcolor: 'background.default' }}>
+                    <Typography color="text.secondary" variant="h6">
+                      Görevleri görüntülemek için bir proje seçin
+                    </Typography>
+                  </Paper>
                 )}
               </Paper>
             </Grid>

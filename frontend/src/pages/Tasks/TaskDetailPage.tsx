@@ -18,6 +18,8 @@ import {
   CardContent,
   Stack,
   Tooltip,
+  TextField,
+  MenuItem,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -30,6 +32,8 @@ import {
   Error,
   LowPriority,
   LinearScale,
+  Save as SaveIcon,
+  Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { Task, TaskStatus, TaskPriority } from '../../types';
 import { taskService } from '../../services/api';
@@ -42,6 +46,10 @@ interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
   value: number;
+}
+
+interface TaskDetailPageProps {
+  isEditing?: boolean;
 }
 
 function TabPanel(props: TabPanelProps) {
@@ -78,7 +86,7 @@ const TaskPriorityLabels: Record<TaskPriority, string> = {
   LOW: 'Düşük',
 };
 
-const TaskDetailPage: React.FC = () => {
+const TaskDetailPage: React.FC<TaskDetailPageProps> = ({ isEditing = false }) => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [task, setTask] = useState<Task | null>(null);
@@ -86,10 +94,23 @@ const TaskDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [tabValue, setTabValue] = useState(0);
   const { enqueueSnackbar } = useSnackbar();
+  const [editForm, setEditForm] = useState<Partial<Task>>({});
 
   useEffect(() => {
     fetchTask();
   }, [id]);
+
+  useEffect(() => {
+    if (task) {
+      setEditForm({
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        dueDate: task.dueDate,
+      });
+    }
+  }, [task]);
 
   const fetchTask = async () => {
     try {
@@ -127,6 +148,29 @@ const TaskDetailPage: React.FC = () => {
     navigate(`/tasks/${id}/edit`);
   };
 
+  const handleSave = async () => {
+    try {
+      if (!task || !editForm) return;
+      
+      await taskService.update(task.id, editForm);
+      enqueueSnackbar('Görev başarıyla güncellendi', { variant: 'success' });
+      
+      // Önce detay sayfasına yönlendir
+      navigate(`/tasks/${id}/details`);
+      
+      // Ardından görevi yeniden yükle
+      await fetchTask();
+
+    } catch (err) {
+      console.error('Görev güncelleme hatası:', err);
+      enqueueSnackbar('Görev güncellenirken bir hata oluştu', { variant: 'error' });
+    }
+  };
+
+  const handleCancel = () => {
+    navigate(`/tasks/${id}/details`);
+  };
+
   const getPriorityIcon = (priority: TaskPriority) => {
     switch (priority) {
       case 'CRITICAL':
@@ -156,12 +200,111 @@ const TaskDetailPage: React.FC = () => {
     );
   }
 
+  if (isEditing) {
+    return (
+      <Container maxWidth="lg">
+        <Box sx={{ py: 4 }}>
+          <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
+            <IconButton onClick={handleCancel}>
+              <ArrowBackIcon />
+            </IconButton>
+            <Typography variant="h4" component="h1" sx={{ flex: 1 }}>
+              Görevi Düzenle
+            </Typography>
+            <Box>
+              <Button
+                variant="contained"
+                startIcon={<SaveIcon />}
+                onClick={handleSave}
+                sx={{ mr: 1 }}
+              >
+                Kaydet
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={<CancelIcon />}
+                onClick={handleCancel}
+              >
+                İptal
+              </Button>
+            </Box>
+          </Box>
+
+          <Card>
+            <CardContent>
+              <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Görev Başlığı"
+                    value={editForm.title || ''}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+                  />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    multiline
+                    rows={4}
+                    label="Açıklama"
+                    value={editForm.description || ''}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    select
+                    label="Durum"
+                    value={editForm.status || ''}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value as TaskStatus }))}
+                  >
+                    {Object.entries(TaskStatusLabels).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>
+                        {label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    select
+                    label="Öncelik"
+                    value={editForm.priority || ''}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, priority: e.target.value as TaskPriority }))}
+                  >
+                    {Object.entries(TaskPriorityLabels).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>
+                        {label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    type="date"
+                    label="Bitiş Tarihi"
+                    value={editForm.dueDate ? new Date(editForm.dueDate).toISOString().split('T')[0] : ''}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, dueDate: new Date(e.target.value) }))}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+        </Box>
+      </Container>
+    );
+  }
+
   return (
     <Container maxWidth="lg">
       <Box sx={{ py: 4 }}>
         {/* Üst Bar */}
         <Box sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
-          <IconButton onClick={() => navigate(-1)}>
+          <IconButton onClick={handleCancel}>
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h4" component="h1" sx={{ flex: 1 }}>

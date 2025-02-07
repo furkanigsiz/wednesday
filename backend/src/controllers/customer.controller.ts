@@ -238,4 +238,110 @@ export const updateInvoiceStatus = async (req: Request, res: Response) => {
     console.error('Fatura durumu güncelleme hatası:', error);
     res.status(500).json({ error: 'Fatura durumu güncellenirken bir hata oluştu' });
   }
+};
+
+// Proje işlemleri
+export const getProjects = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params;
+    const userId = req.user?.userId;
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Yetkilendirme gerekli' });
+    }
+
+    // Sadece müşteriye ait projeleri getir
+    const projects = await prisma.project.findMany({
+      where: { 
+        customerId: parseInt(customerId)
+      },
+      include: {
+        tasks: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            dueDate: true
+          }
+        },
+        owner: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: {
+        updatedAt: 'desc'
+      }
+    });
+
+    res.json(projects);
+  } catch (error) {
+    console.error('Projeler getirilemedi:', error);
+    res.status(500).json({ error: 'Projeler yüklenirken bir hata oluştu' });
+  }
+};
+
+export const createProject = async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params;
+    const userId = req.user?.userId;
+    const { name, description } = req.body;
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Yetkilendirme gerekli' });
+    }
+
+    const project = await prisma.project.create({
+      data: {
+        name,
+        description,
+        customerId: parseInt(customerId),
+        ownerId: userId
+      },
+      include: {
+        tasks: true,
+        owner: true
+      }
+    });
+
+    res.status(201).json(project);
+  } catch (error) {
+    console.error('Proje oluşturulamadı:', error);
+    res.status(500).json({ error: 'Proje oluşturulurken bir hata oluştu' });
+  }
+};
+
+export const getProjectTasks = async (req: Request, res: Response) => {
+  try {
+    const { projectId } = req.params;
+    const userId = req.user?.userId;
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Yetkilendirme gerekli' });
+    }
+
+    const tasks = await prisma.task.findMany({
+      where: { 
+        projectId: parseInt(projectId),
+        OR: [
+          { userId },
+          { project: { customer: { sharedWith: { some: { id: userId } } } } }
+        ]
+      },
+      include: {
+        user: true,
+        creator: true,
+        subtasks: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.json(tasks);
+  } catch (error) {
+    console.error('Görevler getirilemedi:', error);
+    res.status(500).json({ error: 'Görevler yüklenirken bir hata oluştu' });
+  }
 }; 

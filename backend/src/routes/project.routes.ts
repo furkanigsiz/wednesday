@@ -6,6 +6,7 @@ import {
   getProjectById,
   updateProject,
   deleteProject,
+  getProjectTasks
 } from '../controllers/project.controller';
 
 const router = Router();
@@ -30,5 +31,6 @@ router.get('/', getProjects);
 router.get('/:id', getProjectById);
 router.put('/:id', updateProject);
 router.delete('/:id', deleteProject);
+router.get('/:projectId/tasks', getProjectTasks);
 
 export default router; 

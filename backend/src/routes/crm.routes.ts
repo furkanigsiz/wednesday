@@ -29,4 +29,9 @@ router.get('/invoices/:invoiceId', authMiddleware, customerController.getInvoice
 router.post('/invoices/:invoiceId/payments', authMiddleware, customerController.createPayment);
 router.patch('/invoices/:invoiceId/status', authMiddleware, customerController.updateInvoiceStatus);
 
+// Proje işlemleri
+router.get('/customers/:customerId/projects', authMiddleware, customerController.getProjects);
+router.post('/customers/:customerId/projects', authMiddleware, customerController.createProject);
+router.get('/projects/:projectId/tasks', authMiddleware, customerController.getProjectTasks);
+
 export default router; 

@@ -120,8 +120,63 @@ export const customerService = {
       throw new Error('Müşteri bulunamadı veya silme yetkiniz yok');
     }
 
-    await prisma.customer.delete({
-      where: { id },
+    // Transaction ile tüm ilişkili verileri sil
+    await prisma.$transaction(async (tx) => {
+      // 1. Önce fatura kalemleri ve ödemeleri sil
+      const invoices = await tx.invoice.findMany({
+        where: { customerId: id },
+        select: { id: true }
+      });
+
+      const invoiceIds = invoices.map(inv => inv.id);
+
+      // Fatura kalemlerini sil
+      await tx.invoiceItem.deleteMany({
+        where: { invoiceId: { in: invoiceIds } }
+      });
+
+      // Ödemeleri sil
+      await tx.payment.deleteMany({
+        where: { invoiceId: { in: invoiceIds } }
+      });
+
+      // 2. Faturaları sil
+      await tx.invoice.deleteMany({
+        where: { customerId: id }
+      });
+
+      // 3. Etkileşimleri sil
+      await tx.interaction.deleteMany({
+        where: { customerId: id }
+      });
+
+      // 4. Projelerdeki görevleri ve alt görevleri sil
+      const projects = await tx.project.findMany({
+        where: { customerId: id },
+        select: { id: true }
+      });
+
+      const projectIds = projects.map(proj => proj.id);
+
+      // Alt görevleri sil
+      await tx.subtask.deleteMany({
+        where: { task: { projectId: { in: projectIds } } }
+      });
+
+      // Görevleri sil
+      await tx.task.deleteMany({
+        where: { projectId: { in: projectIds } }
+      });
+
+      // 5. Projeleri sil
+      await tx.project.deleteMany({
+        where: { customerId: id }
+      });
+
+      // 6. En son müşteriyi sil
+      await tx.customer.delete({
+        where: { id }
+      });
     });
   },
 

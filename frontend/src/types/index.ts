@@ -182,4 +182,18 @@ export interface InteractionFormData {
   customerId: number;
   type: InteractionType;
   notes: string;
+}
+
+export interface Notification {
+  id: number;
+  type: 'TASK_ASSIGNED' | 'TASK_UPDATED' | 'TASK_COMPLETED' | 'PROJECT_SHARED';
+  title: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+  data?: {
+    taskId?: number;
+    projectId?: number;
+    userId?: number;
+  };
 } 

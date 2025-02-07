@@ -38,7 +38,12 @@ export const projectService = {
     return response.data;
   },
 
-  create: async (data: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Promise<Project> => {
+  create: async (data: {
+    name: string;
+    description?: string;
+    isPrivate: boolean;
+    customerId?: number;
+  }): Promise<Project> => {
     const response = await api.post<Project>('/projects', data);
     return response.data;
   },

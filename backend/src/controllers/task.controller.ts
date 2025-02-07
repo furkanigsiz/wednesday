@@ -8,6 +8,20 @@ import { socketService, notificationEvents } from '../config/socket';
 const prisma = new PrismaClient();
 const DEFAULT_PAGE_SIZE = 10;
 
+const TaskStatusLabels: Record<Status, string> = {
+  NOT_STARTED: 'Başlanmadı',
+  IN_PROGRESS: 'Devam Ediyor',
+  STUCK: 'Takıldı',
+  COMPLETED: 'Tamamlandı',
+};
+
+const TaskPriorityLabels: Record<Priority, string> = {
+  CRITICAL: 'Kritik',
+  HIGH: 'Yüksek',
+  NORMAL: 'Normal',
+  LOW: 'Düşük',
+};
+
 const taskInclude = {
   project: {
     select: {
@@ -345,13 +359,42 @@ export const updateTask = async (req: Request, res: Response) => {
       });
 
       try {
-        socketService.emitToUser(task.userId, notificationEvents.TASK_UPDATED, {
-          taskId: task.id,
-          title: task.title,
-          updatedBy: task.creator?.name,
-          status: task.status,
-          priority: task.priority
-        });
+        // Durum değişikliği bildirimi
+        if (updates.status && updates.status !== existingTask.status) {
+          socketService.emitToUser(task.userId, notificationEvents.TASK_UPDATED, {
+            taskId: task.id,
+            title: task.title,
+            updatedBy: task.creator?.name,
+            message: `Görev durumu "${TaskStatusLabels[existingTask.status]}" durumundan "${TaskStatusLabels[updates.status]}" durumuna güncellendi`,
+            status: updates.status,
+            oldStatus: existingTask.status
+          });
+        }
+
+        // Öncelik değişikliği bildirimi
+        if (updates.priority && updates.priority !== existingTask.priority) {
+          socketService.emitToUser(task.userId, notificationEvents.TASK_UPDATED, {
+            taskId: task.id,
+            title: task.title,
+            updatedBy: task.creator?.name,
+            message: `Görev önceliği "${TaskPriorityLabels[existingTask.priority]}" önceliğinden "${TaskPriorityLabels[updates.priority]}" önceliğine güncellendi`,
+            priority: updates.priority,
+            oldPriority: existingTask.priority
+          });
+        }
+
+        // Bitiş tarihi değişikliği bildirimi
+        if (updates.dueDate && (!existingTask.dueDate || 
+            new Date(updates.dueDate).getTime() !== new Date(existingTask.dueDate).getTime())) {
+          socketService.emitToUser(task.userId, notificationEvents.TASK_UPDATED, {
+            taskId: task.id,
+            title: task.title,
+            updatedBy: task.creator?.name,
+            message: `Görevin bitiş tarihi güncellendi: ${new Date(updates.dueDate).toLocaleDateString('tr-TR')}`,
+            dueDate: updates.dueDate
+          });
+        }
+
       } catch (error) {
         console.error('Görev sahibine bildirim gönderme hatası:', error);
       }
@@ -396,6 +439,7 @@ export const updateTask = async (req: Request, res: Response) => {
         taskId: task.id,
         title: task.title,
         updatedBy: task.user?.name,
+        message: `Görev durumu "${TaskStatusLabels[existingTask.status]}" durumundan "${TaskStatusLabels[updates.status]}" durumuna güncellendi`,
         status: updates.status,
         oldStatus: existingTask.status,
         priority: task.priority

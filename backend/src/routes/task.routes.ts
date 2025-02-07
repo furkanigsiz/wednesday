@@ -13,7 +13,8 @@ import {
   deleteNote,
   uploadFile,
   downloadFile,
-  deleteFile
+  deleteFile,
+  getTaskById
 } from '../controllers/task.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 import upload from '../middleware/upload.middleware';
@@ -23,6 +24,7 @@ const router = Router();
 // Task routes
 router.post('/', authenticateToken, createTask);
 router.get('/', authenticateToken, getTasks);
+router.get('/:id', authenticateToken, getTaskById);
 router.get('/project/:projectId', authenticateToken, getTasksByProject);
 router.put('/:id', authenticateToken, updateTask);
 router.delete('/:id', authenticateToken, deleteTask);

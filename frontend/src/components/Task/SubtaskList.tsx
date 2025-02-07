@@ -21,9 +21,10 @@ import {
   Save as SaveIcon,
   Cancel as CancelIcon,
 } from '@mui/icons-material';
-import { subtaskService } from '../../services/api';
+import { api } from '../../services/api';
 import { Subtask, Task } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { useSnackbar } from 'notistack';
 
 interface SubtaskListProps {
   task: Task;
@@ -33,70 +34,93 @@ interface SubtaskListProps {
 const SubtaskList: React.FC<SubtaskListProps> = ({ task, onSubtaskUpdate }) => {
   const theme = useTheme();
   const { user } = useAuth();
+  const { enqueueSnackbar } = useSnackbar();
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [editingSubtask, setEditingSubtask] = useState<{id: number, title: string} | null>(null);
 
-  useEffect(() => {
-    const loadSubtasks = async () => {
-      await fetchSubtasks();
-    };
-    loadSubtasks();
-  }, [task.id]);
-
   const fetchSubtasks = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await subtaskService.getAll(task.id);
-      setSubtasks(data);
+      const response = await api.get(`/api/tasks/${task.id}/subtasks`);
+      setSubtasks(response.data);
+      setError(null);
     } catch (err) {
       console.error('Alt görevleri getirme hatası:', err);
-      setError('Alt görevler yüklenirken bir hata oluştu');
+      enqueueSnackbar('Alt görevler yüklenirken bir hata oluştu', { variant: 'error' });
     } finally {
       setLoading(false);
     }
-  }, [task.id]);
+  }, [task.id, enqueueSnackbar]);
+
+  useEffect(() => {
+    fetchSubtasks();
+  }, [fetchSubtasks]);
 
   const handleAddSubtask = async () => {
     if (!newSubtaskTitle.trim()) return;
 
     try {
-      const newSubtask = await subtaskService.create(task.id, newSubtaskTitle);
-      setSubtasks([newSubtask, ...subtasks]);
+      const response = await api.post(`/api/tasks/${task.id}/subtasks`, {
+        title: newSubtaskTitle.trim()
+      });
+      
+      console.log('Yeni alt görev yanıtı:', response.data);
+      
+      setSubtasks(prevSubtasks => [{ ...response.data, title: newSubtaskTitle.trim() }, ...prevSubtasks]);
       setNewSubtaskTitle('');
+      setError(null);
+      enqueueSnackbar('Alt görev başarıyla eklendi', { variant: 'success' });
+      
+      await fetchSubtasks();
       onSubtaskUpdate();
     } catch (err) {
       console.error('Alt görev ekleme hatası:', err);
-      setError('Alt görev eklenirken bir hata oluştu');
+      enqueueSnackbar('Alt görev eklenirken bir hata oluştu', { variant: 'error' });
+      await fetchSubtasks();
     }
   };
 
   const handleUpdateSubtask = async (subtaskId: number, data: { title?: string; completed?: boolean }) => {
     try {
-      const updatedSubtask = await subtaskService.update(task.id, subtaskId, data);
-      setSubtasks(subtasks.map(st => st.id === subtaskId ? updatedSubtask : st));
-      setEditingSubtask(null);
-      onSubtaskUpdate();
+      const response = await api.put(`/api/tasks/${task.id}/subtasks/${subtaskId}`, data);
+      
+      if (response.data) {
+        setSubtasks(prevSubtasks => 
+          prevSubtasks.map(st => st.id === subtaskId ? response.data : st)
+        );
+        
+        setEditingSubtask(null);
+        enqueueSnackbar('Alt görev başarıyla güncellendi', { variant: 'success' });
+        
+        await fetchSubtasks();
+        onSubtaskUpdate();
+      }
     } catch (err) {
       console.error('Alt görev güncelleme hatası:', err);
-      setError('Alt görev güncellenirken bir hata oluştu');
+      enqueueSnackbar('Alt görev güncellenirken bir hata oluştu', { variant: 'error' });
+      await fetchSubtasks();
     }
   };
 
   const handleDeleteSubtask = async (subtaskId: number) => {
+    if (!window.confirm('Bu alt görevi silmek istediğinizden emin misiniz?')) {
+      return;
+    }
+
     try {
-      await subtaskService.delete(task.id, subtaskId);
+      await api.delete(`/api/tasks/${task.id}/subtasks/${subtaskId}`);
       setSubtasks(subtasks.filter(st => st.id !== subtaskId));
+      setError(null);
+      enqueueSnackbar('Alt görev başarıyla silindi', { variant: 'success' });
       onSubtaskUpdate();
     } catch (err) {
       console.error('Alt görev silme hatası:', err);
-      setError('Alt görev silinirken bir hata oluştu');
+      enqueueSnackbar('Alt görev silinirken bir hata oluştu', { variant: 'error' });
     }
   };
-
-  const canEditSubtask = () => true;
 
   if (loading) {
     return (
@@ -115,10 +139,6 @@ const SubtaskList: React.FC<SubtaskListProps> = ({ task, onSubtaskUpdate }) => {
         borderRadius: 2
       }}
     >
-      <Typography variant="h6" sx={{ mb: 2, color: theme.palette.text.primary }}>
-        Alt Görevler ({subtasks.length})
-      </Typography>
-
       <Box sx={{ mb: 3, display: 'flex', gap: 1 }}>
         <TextField
           fullWidth
@@ -148,12 +168,6 @@ const SubtaskList: React.FC<SubtaskListProps> = ({ task, onSubtaskUpdate }) => {
           Ekle
         </Button>
       </Box>
-
-      {error && (
-        <Typography color="error" sx={{ mb: 2 }}>
-          {error}
-        </Typography>
-      )}
 
       <List sx={{ width: '100%' }}>
         {subtasks.map((subtask) => (
@@ -238,6 +252,11 @@ const SubtaskList: React.FC<SubtaskListProps> = ({ task, onSubtaskUpdate }) => {
             )}
           </ListItem>
         ))}
+        {subtasks.length === 0 && (
+          <Typography color="text.secondary" align="center" sx={{ py: 2 }}>
+            Henüz alt görev bulunmuyor
+          </Typography>
+        )}
       </List>
     </Paper>
   );

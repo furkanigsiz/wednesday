@@ -260,6 +260,10 @@ export const taskService = {
   delete: async (id: number): Promise<void> => {
     await api.delete(`/api/tasks/${id}`);
   },
+  getProjectTasks: async (projectId: number): Promise<TasksResponse> => {
+    const response = await api.get<TasksResponse>(`/api/projects/${projectId}/tasks`);
+    return response.data;
+  },
 };
 
 // Kullanıcı servisleri

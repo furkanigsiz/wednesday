@@ -1,36 +1,47 @@
-# Dependencies
-node_modules/
-npm-debug.log
-yarn-debug.log
-yarn-error.log
+# dependencies
+/node_modules
+/frontend/node_modules
+/backend/node_modules
+/.pnp
+.pnp.js
 
-# Environment
+# testing
+/coverage
+
+# production
+/build
+/frontend/build
+/backend/dist
+
+# misc
+.DS_Store
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+/backend/.env
+/frontend/.env
 
-# Build
-/build
-/dist
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # IDE
-.idea/
-.vscode/
+.idea
+.vscode
 *.swp
 *.swo
 
-# OS
-.DS_Store
-Thumbs.db
+# Prisma
+/backend/prisma/.env
+
+# Supabase
+.supabase
 
 # Logs
 logs
 *.log
-
-# Coverage
-coverage/
 
 # Temp files
 *.tmp
