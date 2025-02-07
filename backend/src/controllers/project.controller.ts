@@ -7,7 +7,7 @@ const DEFAULT_PAGE_SIZE = 10;
 
 export const createProject = async (req: Request, res: Response) => {
   try {
-    const { name, description, isPrivate }: CreateProjectDTO = req.body;
+    const { name, description, isPrivate, customerId }: CreateProjectDTO = req.body;
     const userId = req.user?.userId;
 
     if (!userId) {
@@ -22,6 +22,16 @@ export const createProject = async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Kullanıcı bulunamadı' });
     }
 
+    if (customerId) {
+      const customer = await prisma.customer.findUnique({
+        where: { id: customerId }
+      });
+
+      if (!customer) {
+        return res.status(404).json({ error: 'Müşteri bulunamadı' });
+      }
+    }
+
     const project = await prisma.project.create({
       data: {
         name,
@@ -29,7 +39,12 @@ export const createProject = async (req: Request, res: Response) => {
         isPrivate,
         owner: {
           connect: { id: userId }
-        }
+        },
+        ...(customerId && {
+          customer: {
+            connect: { id: customerId }
+          }
+        })
       },
       include: {
         owner: {
@@ -39,6 +54,13 @@ export const createProject = async (req: Request, res: Response) => {
             email: true,
           },
         },
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            company: true
+          }
+        }
       },
     });
 
@@ -68,12 +90,24 @@ export const getProjects = async (req: Request, res: Response) => {
     const where = {
       OR: [
         { ownerId: userId },
+        { tasks: { some: { userId } } },
         {
-          tasks: {
-            some: {
-              userId: userId
+          AND: [
+            { isPrivate: false },
+            {
+              OR: [
+                {
+                  owner: {
+                    sharedCustomers: {
+                      some: {
+                        userId
+                      }
+                    }
+                  }
+                }
+              ]
             }
-          }
+          ]
         }
       ],
       ...(search && {
@@ -97,6 +131,13 @@ export const getProjects = async (req: Request, res: Response) => {
               name: true,
               email: true,
             },
+          },
+          customer: {
+            select: {
+              id: true,
+              name: true,
+              company: true
+            }
           },
           tasks: {
             select: {
@@ -130,6 +171,7 @@ export const getProjects = async (req: Request, res: Response) => {
     const formattedProjects = projects.map(project => ({
       ...project,
       ownerName: project.owner.name,
+      isOwner: project.ownerId === userId,
       assignedUsers: [...new Set(project.tasks
         .filter(task => task.user)
         .map(task => ({
@@ -187,7 +229,13 @@ export const getProjectById = async (req: Request, res: Response) => {
       return res.status(403).json({ error: 'Bu projeye erişim yetkiniz yok' });
     }
 
-    res.json(project);
+    // Kullanıcının proje sahibi olup olmadığını kontrol et
+    const isOwner = project.ownerId === userId;
+
+    res.json({
+      ...project,
+      isOwner // Proje sahibi olup olmadığı bilgisini ekle
+    });
   } catch (error) {
     console.error('Get project error:', error);
     res.status(500).json({ error: 'Proje getirilemedi' });
@@ -270,5 +318,52 @@ export const deleteProject = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Delete project error:', error);
     res.status(500).json({ error: 'Proje silinemedi' });
+  }
+};
+
+export const getProjectTasks = async (req: Request, res: Response) => {
+  try {
+    const { projectId } = req.params;
+    const userId = req.user?.userId;
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'Yetkilendirme gerekli' });
+    }
+
+    const tasks = await prisma.task.findMany({
+      where: {
+        projectId: parseInt(projectId),
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                company: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    res.json({ tasks });
+  } catch (error) {
+    console.error('Görevler getirilemedi:', error);
+    res.status(500).json({ error: 'Görevler yüklenirken bir hata oluştu' });
   }
 }; 

@@ -178,9 +178,22 @@ export const getTasks = async (req: Request, res: Response) => {
     const where: Prisma.TaskWhereInput = {
       OR: [
         { userId: currentUserId }, // Kendisine atanmış görevler
+        { creatorId: currentUserId }, // Kendisinin oluşturduğu görevler
+        { project: { ownerId: currentUserId } }, // Kendi projelerindeki görevler
         {
           project: {
-            ownerId: currentUserId // Kendi projelerindeki tüm görevler
+            AND: [
+              { isPrivate: false }, // Public projelerdeki görevler
+              {
+                owner: {
+                  sharedCustomers: {
+                    some: {
+                      userId: currentUserId
+                    }
+                  }
+                }
+              }
+            ]
           }
         }
       ],
@@ -456,7 +469,12 @@ export const getTasksByProject = async (req: Request, res: Response) => {
     }
 
     // Kullanıcının yetkisini kontrol et
-    if (project.isPrivate && project.ownerId !== userId) {
+    if (project.isPrivate && project.ownerId !== userId && !await prisma.task.findFirst({
+      where: {
+        projectId,
+        userId
+      }
+    })) {
       return res.status(403).json({ error: 'Bu projeye erişim yetkiniz yok' });
     }
 
@@ -465,8 +483,25 @@ export const getTasksByProject = async (req: Request, res: Response) => {
       where: { 
         projectId,
         OR: [
-          { userId: userId },
-          { project: { ownerId: userId } }
+          { userId: userId }, // Kendisine atanan görevler
+          { creatorId: userId }, // Kendisinin oluşturduğu görevler
+          { project: { ownerId: userId } }, // Proje sahibinin görevleri
+          {
+            project: {
+              AND: [
+                { isPrivate: false }, // Public projelerdeki görevler
+                {
+                  owner: {
+                    sharedCustomers: {
+                      some: {
+                        userId
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
         ]
       },
       include: {
@@ -578,22 +613,47 @@ export const createSubtask = async (req: Request, res: Response) => {
 
 export const updateSubtask = async (req: Request, res: Response) => {
   try {
-    const taskId = parseInt(req.params.id);
-    const subtaskId = parseInt(req.params.subtaskId);
-    const { completed } = req.body;
+    const { id: taskId, subtaskId } = req.params;
+    const { title, completed } = req.body;
+    const currentUserId = req.user?.userId;
 
-    const subtask = await prisma.subtask.update({
-      where: {
-        id: subtaskId,
-        taskId: taskId
-      },
-      data: { completed }
+    if (!currentUserId) {
+      return res.status(401).json({ error: 'Yetkilendirme gerekli' });
+    }
+
+    // Görevin ve alt görevin varlığını kontrol et
+    const task = await prisma.task.findUnique({
+      where: { id: Number(taskId) },
+      include: {
+        project: true,
+        subtasks: {
+          where: { id: Number(subtaskId) }
+        }
+      }
     });
 
-    res.json(subtask);
+    if (!task || task.subtasks.length === 0) {
+      return res.status(404).json({ error: 'Görev veya alt görev bulunamadı' });
+    }
+
+    // Yetki kontrolü
+    if (task.userId !== currentUserId && task.project.ownerId !== currentUserId) {
+      return res.status(403).json({ error: 'Bu alt görevi güncelleme yetkiniz yok' });
+    }
+
+    // Alt görevi güncelle
+    const updatedSubtask = await prisma.subtask.update({
+      where: { id: Number(subtaskId) },
+      data: {
+        ...(title !== undefined && { title }),
+        ...(completed !== undefined && { completed })
+      }
+    });
+
+    res.json(updatedSubtask);
   } catch (error) {
-    console.error('Alt görev güncelleme hatası:', error);
-    res.status(500).json({ error: 'Alt görev güncellenirken bir hata oluştu.' });
+    console.error('Update subtask error:', error);
+    res.status(500).json({ error: 'Alt görev güncellenemedi' });
   }
 };
 

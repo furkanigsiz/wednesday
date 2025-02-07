@@ -17,8 +17,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  FormControlLabel,
-  Switch,
   Alert,
   CircularProgress,
   useTheme,
@@ -36,9 +34,11 @@ import {
   Public as PublicIcon,
   Lock as LockIcon,
   CalendarToday as CalendarIcon,
+  Business as BusinessIcon,
 } from '@mui/icons-material';
 import { projectService } from '../../services/api';
 import { Project } from '../../types';
+import ProjectForm from './ProjectForm';
 
 const ProjectsPage: React.FC = () => {
   const theme = useTheme();
@@ -48,11 +48,6 @@ const ProjectsPage: React.FC = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    isPrivate: false,
-  });
 
   useEffect(() => {
     fetchProjects();
@@ -73,36 +68,16 @@ const ProjectsPage: React.FC = () => {
   };
 
   const handleOpenDialog = (project?: Project) => {
-    if (project) {
-      setEditingProject(project);
-      setFormData({
-        name: project.name,
-        description: project.description,
-        isPrivate: project.isPrivate,
-      });
-    } else {
-      setEditingProject(null);
-      setFormData({
-        name: '',
-        description: '',
-        isPrivate: false,
-      });
-    }
+    setEditingProject(project || null);
     setOpenDialog(true);
   };
 
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingProject(null);
-    setFormData({
-      name: '',
-      description: '',
-      isPrivate: false,
-    });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (formData: Partial<Project>) => {
     try {
       if (editingProject) {
         await projectService.update(editingProject.id, formData);
@@ -238,6 +213,7 @@ const ProjectsPage: React.FC = () => {
               <TableRow sx={{ backgroundColor: theme.palette.primary.main }}>
                 <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Proje Adı</TableCell>
                 <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Açıklama</TableCell>
+                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Müşteri</TableCell>
                 <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Durum</TableCell>
                 <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Oluşturulma Tarihi</TableCell>
                 <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>İşlemler</TableCell>
@@ -246,80 +222,72 @@ const ProjectsPage: React.FC = () => {
             <TableBody>
               {filteredProjects.length > 0 ? (
                 filteredProjects.map((project) => (
-                  <TableRow 
-                    key={project.id}
-                    sx={{ 
-                      '&:hover': { 
-                        backgroundColor: theme.palette.action.hover 
-                      }
-                    }}
-                  >
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {project.isPrivate ? (
-                          <LockIcon fontSize="small" sx={{ color: theme.palette.warning.main }} />
-                        ) : (
-                          <PublicIcon fontSize="small" sx={{ color: theme.palette.success.main }} />
-                        )}
-                        {project.name}
-                      </Box>
-                    </TableCell>
+                  <TableRow key={project.id}>
+                    <TableCell>{project.name}</TableCell>
                     <TableCell>{project.description}</TableCell>
                     <TableCell>
+                      {project.customer ? (
+                        <Chip
+                          icon={<BusinessIcon />}
+                          label={project.customer.company 
+                            ? `${project.customer.name} (${project.customer.company})`
+                            : project.customer.name}
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                        />
+                      ) : (
+                        <Typography variant="caption" color="text.secondary">
+                          -
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <Chip
+                        icon={project.isPrivate ? <LockIcon /> : <PublicIcon />}
                         label={project.isPrivate ? 'Özel' : 'Genel'}
                         size="small"
-                        color={project.isPrivate ? 'warning' : 'success'}
-                        sx={{ borderRadius: 1 }}
+                        color={project.isPrivate ? 'secondary' : 'default'}
                       />
                     </TableCell>
                     <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <CalendarIcon fontSize="small" sx={{ color: theme.palette.text.secondary }} />
-                        {new Date(project.createdAt).toLocaleDateString('tr-TR')}
-                      </Box>
+                      <Tooltip title={new Date(project.createdAt).toLocaleString()}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CalendarIcon fontSize="small" color="action" />
+                          <Typography variant="body2">
+                            {new Date(project.createdAt).toLocaleDateString()}
+                          </Typography>
+                        </Box>
+                      </Tooltip>
                     </TableCell>
                     <TableCell align="right">
-                      <Tooltip title="Düzenle">
-                        <IconButton
-                          color="primary"
-                          onClick={() => handleOpenDialog(project)}
-                          sx={{ 
-                            '&:hover': { 
-                              backgroundColor: theme.palette.primary.light 
-                            }
-                          }}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Sil">
-                        <IconButton
-                          color="error"
-                          onClick={() => handleDeleteProject(project.id)}
-                          sx={{ 
-                            '&:hover': { 
-                              backgroundColor: theme.palette.error.light 
-                            }
-                          }}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
-                      </Tooltip>
+                      {project.isOwner && (
+                        <>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenDialog(project)}
+                            sx={{ color: theme.palette.primary.main }}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeleteProject(project.id)}
+                            sx={{ color: theme.palette.error.main }}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell 
-                    colSpan={5} 
-                    align="center"
-                    sx={{ 
-                      py: 4,
-                      color: theme.palette.text.secondary
-                    }}
-                  >
-                    {error ? 'Bir hata oluştu' : 'Henüz proje bulunmuyor'}
+                  <TableCell colSpan={6} align="center">
+                    <Typography variant="body2" color="text.secondary">
+                      {searchTerm ? 'Arama kriterlerine uygun proje bulunamadı.' : 'Henüz proje bulunmuyor.'}
+                    </Typography>
                   </TableCell>
                 </TableRow>
               )}
@@ -330,95 +298,23 @@ const ProjectsPage: React.FC = () => {
 
       <Dialog 
         open={openDialog} 
-        onClose={handleCloseDialog} 
-        maxWidth="sm" 
+        onClose={handleCloseDialog}
+        maxWidth="sm"
         fullWidth
         PaperProps={{
           elevation: 2,
           sx: { borderRadius: 2 }
         }}
       >
-        <DialogTitle sx={{ 
-          pb: 1,
-          color: theme.palette.primary.main,
-          fontWeight: 'bold'
-        }}>
+        <DialogTitle>
           {editingProject ? 'Projeyi Düzenle' : 'Yeni Proje Oluştur'}
         </DialogTitle>
-        <form onSubmit={handleSubmit}>
-          <DialogContent sx={{ pb: 2 }}>
-            <TextField
-              fullWidth
-              label="Proje Adı"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              required
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: { borderRadius: 1 }
-              }}
-            />
-            <TextField
-              fullWidth
-              label="Açıklama"
-              value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-              multiline
-              rows={4}
-              sx={{ mb: 3 }}
-              InputProps={{
-                sx: { borderRadius: 1 }
-              }}
-            />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={formData.isPrivate}
-                  onChange={(e) =>
-                    setFormData({ ...formData, isPrivate: e.target.checked })
-                  }
-                  color="primary"
-                />
-              }
-              label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {formData.isPrivate ? (
-                    <LockIcon fontSize="small" sx={{ color: theme.palette.warning.main }} />
-                  ) : (
-                    <PublicIcon fontSize="small" sx={{ color: theme.palette.success.main }} />
-                  )}
-                  <Typography>
-                    {formData.isPrivate ? 'Özel Proje' : 'Genel Proje'}
-                  </Typography>
-                </Box>
-              }
-            />
-          </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button 
-              onClick={handleCloseDialog}
-              sx={{ 
-                textTransform: 'none',
-                borderRadius: 1
-              }}
-            >
-              İptal
-            </Button>
-            <Button 
-              type="submit" 
-              variant="contained"
-              sx={{ 
-                textTransform: 'none',
-                borderRadius: 1,
-                px: 3
-              }}
-            >
-              {editingProject ? 'Güncelle' : 'Oluştur'}
-            </Button>
-          </DialogActions>
-        </form>
+        <DialogContent>
+          <ProjectForm
+            onSubmit={handleSubmit}
+            initialData={editingProject || undefined}
+          />
+        </DialogContent>
       </Dialog>
     </Container>
   );

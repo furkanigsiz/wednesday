@@ -9,14 +9,14 @@ export interface Project {
   name: string;
   description: string;
   isPrivate: boolean;
-  ownerId: number;
   createdAt: string;
   updatedAt: string;
-  owner?: {
-    id: number;
-    name: string;
-    email: string;
-  };
+  ownerId: number;
+  owner: User;
+  customerId?: number;
+  customer?: Customer;
+  isOwner: boolean;
+  tasks?: Task[];
 }
 
 export type TaskStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'STUCK' | 'COMPLETED';
